@@ -1,8 +1,12 @@
-# Production Docker Compose — uses external RDS, Redis in Docker
-# No dev mounts, no --reload, no next dev
+# Production Docker Compose - pulls pre-built images from Docker Hub
+# No building on EC2, no dev mounts, no --reload
 #
 # Usage:
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# To update after pushing new images:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
 
 services:
   redis:
@@ -30,11 +34,10 @@ services:
       - frontend
 
   backend:
-    build: ./backend
+    image: ${DOCKERHUB_USER:-matchmind}/matchmind-backend:latest
     restart: unless-stopped
     env_file: .env.prod
     environment:
-      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -46,12 +49,11 @@ services:
         condition: service_healthy
 
   celery-worker:
-    build: ./backend
+    image: ${DOCKERHUB_USER:-matchmind}/matchmind-backend:latest
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
     env_file: .env.prod
     environment:
-      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -60,12 +62,11 @@ services:
         condition: service_healthy
 
   celery-beat:
-    build: ./backend
+    image: ${DOCKERHUB_USER:-matchmind}/matchmind-backend:latest
     restart: unless-stopped
     command: celery -A app.workers.celery_app beat --loglevel=info
     env_file: .env.prod
     environment:
-      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -73,16 +74,9 @@ services:
       - redis
 
   frontend:
-    build:
-      context: ./frontend
-      args:
-        # Baked into the Next.js build — set to empty for same-origin via Nginx
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    image: ${DOCKERHUB_USER:-matchmind}/matchmind-frontend:latest
     restart: unless-stopped
-    environment:
-      NODE_ENV: production
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-      NEXT_PUBLIC_CLERK_JWT_TEMPLATE: ${NEXT_PUBLIC_CLERK_JWT_TEMPLATE}
+    env_file: .env.prod
     expose:
       - "3000"
 
